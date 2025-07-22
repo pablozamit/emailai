@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useLocalStorage, useAutoSave } from './hooks/useLocalStorage';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { PromptData, GeneratedEmail, Feedback, ServiceReference } from './types';
 import { COPYWRITING_FORMULAS, SUBJECT_OPTIONS, EXAMPLE_PROMPT_DATA } from './constants';
 import { generateEmailCopy } from './services/geminiService';
@@ -36,20 +36,55 @@ const initialPromptData: PromptData = {
 };
 
 const App: React.FC = () => {
-  const [promptData, setPromptData] = useLocalStorage<PromptData>('ai-email-copywriter-prompt-data', initialPromptData);
-  const [lockedFields, setLockedFields] = useLocalStorage<Record<string, boolean>>('ai-email-copywriter-locked-fields', {});
-  const [emailCount, setEmailCount] = useLocalStorage<number>('ai-email-copywriter-email-count', 1);
-  const [isEmailCountLocked, setIsEmailCountLocked] = useLocalStorage<boolean>('ai-email-copywriter-email-count-locked', false);
+  const [promptData, setPromptData] = useState<PromptData>(initialPromptData);
+  const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({});
+  const [emailCount, setEmailCount] = useState<number>(1);
+  const [isEmailCountLocked, setIsEmailCountLocked] = useState<boolean>(false);
   const [generatedEmails, setGeneratedEmails] = useState<GeneratedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [feedbackHistory, setFeedbackHistory] = useLocalStorage<Feedback[]>('ai-email-copywriter-feedback-history', []);
+  const [feedbackHistory, setFeedbackHistory] = useState<Feedback[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-save prompt data with debounce
-  useAutoSave('ai-email-copywriter-prompt-data', promptData, 500);
-  useAutoSave('ai-email-copywriter-locked-fields', lockedFields, 500);
-  useAutoSave('ai-email-copywriter-feedback-history', feedbackHistory, 1000);
+  useEffect(() => {
+    async function loadUserData() {
+      try {
+        const response = await fetch('/api/user-data');
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setPromptData(data.promptData);
+            setFeedbackHistory(data.feedbackHistory);
+          }
+        }
+      } catch (error) {
+        console.error("No se pudieron cargar los datos del usuario", error);
+      }
+    }
+    loadUserData();
+  }, []);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const saveData = async () => {
+        try {
+          await fetch('/api/user-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ promptData, feedbackHistory }),
+          });
+        } catch (error) {
+          console.error("Error al guardar los datos", error);
+        }
+      };
+      saveData();
+    }, 1000);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [promptData, feedbackHistory]);
 
   const handlePromptChange = useCallback((field: keyof PromptData, value: any) => {
     setPromptData(prev => ({ ...prev, [field]: value }));
@@ -107,11 +142,15 @@ const App: React.FC = () => {
 
 
   const handleGenerate = async () => {
+    if (!apiKey) {
+      setError("Por favor, introduce tu API Key de Gemini para generar emails.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setGeneratedEmails([]);
     try {
-      const emails = await generateEmailCopy(promptData, emailCount, feedbackHistory);
+      const emails = await generateEmailCopy(promptData, emailCount, feedbackHistory, apiKey);
       setGeneratedEmails(emails);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ocurrió un error desconocido.");
@@ -144,22 +183,6 @@ const App: React.FC = () => {
     }, 100);
   };
 
-  const clearAllData = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos guardados? Esta acción no se puede deshacer.')) {
-      localStorage.removeItem('ai-email-copywriter-prompt-data');
-      localStorage.removeItem('ai-email-copywriter-locked-fields');
-      localStorage.removeItem('ai-email-copywriter-email-count');
-      localStorage.removeItem('ai-email-copywriter-email-count-locked');
-      localStorage.removeItem('ai-email-copywriter-feedback-history');
-      
-      setPromptData(initialPromptData);
-      setLockedFields({});
-      setEmailCount(1);
-      setIsEmailCountLocked(false);
-      setFeedbackHistory([]);
-      setGeneratedEmails([]);
-    }
-  };
   
   const getSuggestionPrompt = (fieldTitle: string): string => {
     const contextParts: string[] = [];
@@ -187,6 +210,7 @@ const App: React.FC = () => {
       suggestionPrompt={getSuggestionPrompt(title + ' ' + subtitle)}
       onSuggestion={(suggestion) => handlePromptChange(field, suggestion)}
       isOptional={isOptional}
+      apiKey={apiKey}
     >
       {children}
     </PromptCard>
@@ -324,23 +348,25 @@ const App: React.FC = () => {
           {/* Right Column: Output & Actions */}
           <div className="sticky top-28 self-start space-y-6">
             <Card>
+                <h3 className="font-heading text-xl font-bold text-gray-800 mb-4">Configuración</h3>
+                <div className="space-y-2">
+                    <label htmlFor="apiKey" className="block font-medium text-gray-700 text-sm">Tu API Key de Gemini</label>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="password"
+                            id="apiKey"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent text-sm"
+                            placeholder="Pega tu API Key aquí"
+                        />
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
               <h3 className="font-heading text-xl font-bold text-gray-800 mb-4">Acciones</h3>
               <div className="space-y-4">
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-green-700 mb-1">
-                      <Icon name="save" className="w-4 h-4" />
-                      <span className="font-medium">Tu trabajo se guarda automáticamente</span>
-                    </div>
-                    <p className="text-xs text-green-600">
-                      Todos tus campos, configuraciones y feedback se guardan en tu navegador.
-                    </p>
-                    <button 
-                      onClick={clearAllData}
-                      className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
-                    >
-                      Borrar todos los datos guardados
-                    </button>
-                  </div>
                   <div className="flex items-center justify-between">
                       <label htmlFor="emailCount" className="block font-medium text-gray-700">Número de emails a generar</label>
                       <div className="flex items-center gap-2" title="Bloquear este campo para que no cambie al generar ejemplos">
