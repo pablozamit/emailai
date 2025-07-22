@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PromptData, GeneratedEmail, Feedback, ServiceReference } from './types';
 import { COPYWRITING_FORMULAS, SUBJECT_OPTIONS, EXAMPLE_PROMPT_DATA } from './constants';
-import { generateEmailCopy } from './services/geminiService';
+import { generateEmailCopy, generateSuggestion } from './services/geminiService';
 import { PromptCard } from './components/ui/PromptCard';
 import { Textarea } from './components/ui/Textarea';
 import { Button } from './components/ui/Button';
@@ -47,6 +46,7 @@ const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Carga los datos del usuario desde el backend al iniciar la app
   useEffect(() => {
     async function loadUserData() {
       try {
@@ -65,6 +65,7 @@ const App: React.FC = () => {
     loadUserData();
   }, []);
 
+  // Autoguarda los datos en el backend cuando cambian
   useEffect(() => {
     const handler = setTimeout(() => {
       const saveData = async () => {
@@ -79,7 +80,7 @@ const App: React.FC = () => {
         }
       };
       saveData();
-    }, 1000);
+    }, 1000); // Espera 1 segundo después del último cambio para guardar
 
     return () => {
       clearTimeout(handler);
@@ -123,7 +124,7 @@ const App: React.FC = () => {
             type: file.type,
             data: reader.result as string,
           },
-          auto: false, // Disable auto placement when an image is uploaded
+          auto: false,
         });
       };
       reader.readAsDataURL(file);
@@ -139,7 +140,6 @@ const App: React.FC = () => {
         fileInputRef.current.value = "";
     }
   }
-
 
   const handleGenerate = async () => {
     if (!apiKey) {
@@ -182,7 +182,6 @@ const App: React.FC = () => {
         handleGenerate();
     }, 100);
   };
-
   
   const getSuggestionPrompt = (fieldTitle: string): string => {
     const contextParts: string[] = [];
@@ -221,13 +220,13 @@ const App: React.FC = () => {
       <header className="bg-brand-card/80 backdrop-blur-sm shadow-sm sticky top-0 z-20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-5 text-center">
           <h1 className="text-4xl font-extrabold text-brand-text font-heading">AI Email Copywriter</h1>
-          <div className="flex items-center justify-center gap-4 mt-2">
-            <p className="text-gray-500">Crea newsletters con un IA auto-entrenado y un panel de control creativo.</p>
-            <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-              <Icon name="save" className="w-3 h-3" />
-              <span>Autoguardado activo</span>
+            <div className="flex items-center justify-center gap-4 mt-2">
+                <p className="text-gray-500">Crea newsletters con un IA auto-entrenado y un panel de control creativo.</p>
+                <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                    <Icon name="save" className="w-3 h-3" />
+                    <span>Autoguardado activo</span>
+                </div>
             </div>
-          </div>
         </div>
       </header>
       
@@ -304,7 +303,7 @@ const App: React.FC = () => {
             {renderPromptCard('copywritingPrinciple', 'Principio', 'de Copywriting', (
               <Textarea value={promptData.copywritingPrinciple} onChange={e => handlePromptChange('copywritingPrinciple', e.target.value)} placeholder="Describe en tus palabras el principio o enfoque a usar. Ej: 'Generar urgencia con una fecha límite', 'Usar la prueba social de expertos'..." />
             ))}
-            <PromptCard title="Fórmulas" subtitle="(Panel DJ)" isLocked={!!lockedFields['formulas']} onLockToggle={() => handleLockToggle('formulas')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}}>
+            <PromptCard title="Fórmulas" subtitle="(Panel DJ)" isLocked={!!lockedFields['formulas']} onLockToggle={() => handleLockToggle('formulas')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}} apiKey={apiKey}>
               <div className="space-y-4">
                 {COPYWRITING_FORMULAS.map(formula => (
                   <div key={formula.name}>
@@ -315,7 +314,7 @@ const App: React.FC = () => {
                 ))}
               </div>
             </PromptCard>
-            <PromptCard title="Longitud" subtitle="de Email y Párrafos" isLocked={!!lockedFields['length']} onLockToggle={() => handleLockToggle('length')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}}>
+            <PromptCard title="Longitud" subtitle="de Email y Párrafos" isLocked={!!lockedFields['length']} onLockToggle={() => handleLockToggle('length')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}} apiKey={apiKey}>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Longitud de Email</label>
@@ -333,7 +332,7 @@ const App: React.FC = () => {
                 </div>
               </div>
             </PromptCard>
-            <PromptCard title="Asunto" subtitle="Técnicas de Apertura" isLocked={!!lockedFields['subjectOptions']} onLockToggle={() => handleLockToggle('subjectOptions')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}}>
+            <PromptCard title="Asunto" subtitle="Técnicas de Apertura" isLocked={!!lockedFields['subjectOptions']} onLockToggle={() => handleLockToggle('subjectOptions')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}} apiKey={apiKey}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                 {Object.entries(SUBJECT_OPTIONS).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-3 cursor-pointer p-2 rounded-md hover:bg-gray-50">
