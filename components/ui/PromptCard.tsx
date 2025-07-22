@@ -13,6 +13,7 @@ interface PromptCardProps {
   suggestionPrompt: string;
   children: React.ReactNode;
   isOptional?: boolean;
+  apiKey: string;
 }
 
 export const PromptCard: React.FC<PromptCardProps> = ({
@@ -24,14 +25,19 @@ export const PromptCard: React.FC<PromptCardProps> = ({
   suggestionPrompt,
   children,
   isOptional = false,
+  apiKey,
 }) => {
   const [isSuggesting, setIsSuggesting] = useState(false);
   
   const handleSuggestion = async () => {
     if (suggestionPrompt.includes('No se pueden generar sugerencias')) return;
+    if (!apiKey) {
+      alert("Por favor, introduce tu API Key de Gemini para obtener sugerencias.");
+      return;
+    }
     setIsSuggesting(true);
     try {
-      const suggestion = await generateSuggestion(suggestionPrompt);
+      const suggestion = await generateSuggestion(suggestionPrompt, apiKey);
       onSuggestion(suggestion);
     } catch (error) {
       console.error("Failed to get suggestion");

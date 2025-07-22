@@ -1,13 +1,12 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { PromptData, GeneratedEmail, Feedback } from "../types";
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+const getAiClient = (apiKey: string) => {
+  if (!apiKey) {
+    throw new Error("API key not provided.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 const buildMainPrompt = (data: PromptData, emailCount: number, feedbackHistory: Feedback[]): string => {
   const formulas = Object.entries(data.formulas)
@@ -123,9 +122,11 @@ Ejemplo de formato de respuesta:
 export const generateEmailCopy = async (
   data: PromptData,
   emailCount: number,
-  feedbackHistory: Feedback[]
+  feedbackHistory: Feedback[],
+  apiKey: string
 ): Promise<GeneratedEmail[]> => {
   const prompt = buildMainPrompt(data, emailCount, feedbackHistory);
+  const ai = getAiClient(apiKey);
 
   const responseSchema = {
     type: Type.ARRAY,
@@ -163,10 +164,11 @@ export const generateEmailCopy = async (
 };
 
 
-export const generateSuggestion = async (instruction: string): Promise<string> => {
+export const generateSuggestion = async (instruction: string, apiKey: string): Promise<string> => {
     if (instruction.includes("No hay suficiente contexto")) {
         return "Por favor, rellena primero el tema o el objetivo para obtener una sugerencia.";
     }
+    const ai = getAiClient(apiKey);
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash",
