@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { useLocalStorage, useAutoSave } from './hooks/useLocalStorage';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PromptData, GeneratedEmail, Feedback, ServiceReference } from './types';
 import { COPYWRITING_FORMULAS, SUBJECT_OPTIONS, EXAMPLE_PROMPT_DATA } from './constants';
-import { generateEmailCopy } from './services/geminiService';
+import { generateEmailCopy, generateSuggestion } from './services/geminiService';
 import { PromptCard } from './components/ui/PromptCard';
 import { Textarea } from './components/ui/Textarea';
 import { Button } from './components/ui/Button';
@@ -36,21 +35,57 @@ const initialPromptData: PromptData = {
 };
 
 const App: React.FC = () => {
-  const [promptData, setPromptData] = useLocalStorage<PromptData>('ai-email-copywriter-prompt-data', initialPromptData);
-  const [lockedFields, setLockedFields] = useLocalStorage<Record<string, boolean>>('ai-email-copywriter-locked-fields', {});
-  const [emailCount, setEmailCount] = useLocalStorage<number>('ai-email-copywriter-email-count', 1);
-  const [isEmailCountLocked, setIsEmailCountLocked] = useLocalStorage<boolean>('ai-email-copywriter-email-count-locked', false);
+  const [promptData, setPromptData] = useState<PromptData>(initialPromptData);
+  const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({});
+  const [emailCount, setEmailCount] = useState<number>(1);
+  const [isEmailCountLocked, setIsEmailCountLocked] = useState<boolean>(false);
   const [generatedEmails, setGeneratedEmails] = useState<GeneratedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [feedbackHistory, setFeedbackHistory] = useLocalStorage<Feedback[]>('ai-email-copywriter-feedback-history', []);
-  const [apiKey, setApiKey] = useLocalStorage<string>('ai-email-copywriter-api-key', '');
+  const [feedbackHistory, setFeedbackHistory] = useState<Feedback[]>([]);
+  const [apiKey, setApiKey] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-save prompt data with debounce
-  useAutoSave('ai-email-copywriter-prompt-data', promptData, 500);
-  useAutoSave('ai-email-copywriter-locked-fields', lockedFields, 500);
-  useAutoSave('ai-email-copywriter-feedback-history', feedbackHistory, 1000);
+  // Carga los datos del usuario desde el backend al iniciar la app
+  useEffect(() => {
+    async function loadUserData() {
+      try {
+        const response = await fetch('/api/user-data');
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setPromptData(data.promptData);
+            setFeedbackHistory(data.feedbackHistory);
+          }
+        }
+      } catch (error) {
+        console.error("No se pudieron cargar los datos del usuario", error);
+      }
+    }
+    loadUserData();
+  }, []);
+
+  // Autoguarda los datos en el backend cuando cambian
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const saveData = async () => {
+        try {
+          await fetch('/api/user-data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ promptData, feedbackHistory }),
+          });
+        } catch (error) {
+          console.error("Error al guardar los datos", error);
+        }
+      };
+      saveData();
+    }, 1000); // Espera 1 segundo después del último cambio para guardar
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [promptData, feedbackHistory]);
 
   const handlePromptChange = useCallback((field: keyof PromptData, value: any) => {
     setPromptData(prev => ({ ...prev, [field]: value }));
@@ -89,7 +124,7 @@ const App: React.FC = () => {
             type: file.type,
             data: reader.result as string,
           },
-          auto: false, // Disable auto placement when an image is uploaded
+          auto: false,
         });
       };
       reader.readAsDataURL(file);
@@ -105,7 +140,6 @@ const App: React.FC = () => {
         fileInputRef.current.value = "";
     }
   }
-
 
   const handleGenerate = async () => {
     if (!apiKey) {
@@ -148,23 +182,6 @@ const App: React.FC = () => {
         handleGenerate();
     }, 100);
   };
-
-  const clearAllData = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos guardados? Esta acción no se puede deshacer.')) {
-      localStorage.removeItem('ai-email-copywriter-prompt-data');
-      localStorage.removeItem('ai-email-copywriter-locked-fields');
-      localStorage.removeItem('ai-email-copywriter-email-count');
-      localStorage.removeItem('ai-email-copywriter-email-count-locked');
-      localStorage.removeItem('ai-email-copywriter-feedback-history');
-      
-      setPromptData(initialPromptData);
-      setLockedFields({});
-      setEmailCount(1);
-      setIsEmailCountLocked(false);
-      setFeedbackHistory([]);
-      setGeneratedEmails([]);
-    }
-  };
   
   const getSuggestionPrompt = (fieldTitle: string): string => {
     const contextParts: string[] = [];
@@ -203,13 +220,13 @@ const App: React.FC = () => {
       <header className="bg-brand-card/80 backdrop-blur-sm shadow-sm sticky top-0 z-20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-5 text-center">
           <h1 className="text-4xl font-extrabold text-brand-text font-heading">AI Email Copywriter</h1>
-          <div className="flex items-center justify-center gap-4 mt-2">
-            <p className="text-gray-500">Crea newsletters con un IA auto-entrenado y un panel de control creativo.</p>
-            <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-              <Icon name="save" className="w-3 h-3" />
-              <span>Autoguardado activo</span>
+            <div className="flex items-center justify-center gap-4 mt-2">
+                <p className="text-gray-500">Crea newsletters con un IA auto-entrenado y un panel de control creativo.</p>
+                <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                    <Icon name="save" className="w-3 h-3" />
+                    <span>Autoguardado activo</span>
+                </div>
             </div>
-          </div>
         </div>
       </header>
       
@@ -286,7 +303,7 @@ const App: React.FC = () => {
             {renderPromptCard('copywritingPrinciple', 'Principio', 'de Copywriting', (
               <Textarea value={promptData.copywritingPrinciple} onChange={e => handlePromptChange('copywritingPrinciple', e.target.value)} placeholder="Describe en tus palabras el principio o enfoque a usar. Ej: 'Generar urgencia con una fecha límite', 'Usar la prueba social de expertos'..." />
             ))}
-            <PromptCard title="Fórmulas" subtitle="(Panel DJ)" isLocked={!!lockedFields['formulas']} onLockToggle={() => handleLockToggle('formulas')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}}>
+            <PromptCard title="Fórmulas" subtitle="(Panel DJ)" isLocked={!!lockedFields['formulas']} onLockToggle={() => handleLockToggle('formulas')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}} apiKey={apiKey}>
               <div className="space-y-4">
                 {COPYWRITING_FORMULAS.map(formula => (
                   <div key={formula.name}>
@@ -297,7 +314,7 @@ const App: React.FC = () => {
                 ))}
               </div>
             </PromptCard>
-            <PromptCard title="Longitud" subtitle="de Email y Párrafos" isLocked={!!lockedFields['length']} onLockToggle={() => handleLockToggle('length')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}}>
+            <PromptCard title="Longitud" subtitle="de Email y Párrafos" isLocked={!!lockedFields['length']} onLockToggle={() => handleLockToggle('length')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}} apiKey={apiKey}>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Longitud de Email</label>
@@ -315,7 +332,7 @@ const App: React.FC = () => {
                 </div>
               </div>
             </PromptCard>
-            <PromptCard title="Asunto" subtitle="Técnicas de Apertura" isLocked={!!lockedFields['subjectOptions']} onLockToggle={() => handleLockToggle('subjectOptions')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}}>
+            <PromptCard title="Asunto" subtitle="Técnicas de Apertura" isLocked={!!lockedFields['subjectOptions']} onLockToggle={() => handleLockToggle('subjectOptions')} suggestionPrompt="No se pueden generar sugerencias para este campo" onSuggestion={()=>{}} apiKey={apiKey}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                 {Object.entries(SUBJECT_OPTIONS).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-3 cursor-pointer p-2 rounded-md hover:bg-gray-50">
@@ -349,21 +366,6 @@ const App: React.FC = () => {
             <Card>
               <h3 className="font-heading text-xl font-bold text-gray-800 mb-4">Acciones</h3>
               <div className="space-y-4">
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-green-700 mb-1">
-                      <Icon name="save" className="w-4 h-4" />
-                      <span className="font-medium">Tu trabajo se guarda automáticamente</span>
-                    </div>
-                    <p className="text-xs text-green-600">
-                      Todos tus campos, configuraciones y feedback se guardan en tu navegador.
-                    </p>
-                    <button 
-                      onClick={clearAllData}
-                      className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
-                    >
-                      Borrar todos los datos guardados
-                    </button>
-                  </div>
                   <div className="flex items-center justify-between">
                       <label htmlFor="emailCount" className="block font-medium text-gray-700">Número de emails a generar</label>
                       <div className="flex items-center gap-2" title="Bloquear este campo para que no cambie al generar ejemplos">
