@@ -1,0 +1,5 @@
+{
+  "name": "AI Email Copywriter",
+  "description": "An application to generate email newsletters using an AI model. It features a creative control panel to fine-tune the output and a feedback system to improve future generations.",
+  "requestFramePermissions": []
+}
