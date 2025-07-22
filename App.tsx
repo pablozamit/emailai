@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedbackHistory, setFeedbackHistory] = useLocalStorage<Feedback[]>('ai-email-copywriter-feedback-history', []);
+  const [apiKey, setApiKey] = useLocalStorage<string>('ai-email-copywriter-api-key', '');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-save prompt data with debounce
@@ -107,11 +108,15 @@ const App: React.FC = () => {
 
 
   const handleGenerate = async () => {
+    if (!apiKey) {
+      setError("Por favor, introduce tu API Key de Gemini para generar emails.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setGeneratedEmails([]);
     try {
-      const emails = await generateEmailCopy(promptData, emailCount, feedbackHistory);
+      const emails = await generateEmailCopy(promptData, emailCount, feedbackHistory, apiKey);
       setGeneratedEmails(emails);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ocurrió un error desconocido.");
@@ -187,6 +192,7 @@ const App: React.FC = () => {
       suggestionPrompt={getSuggestionPrompt(title + ' ' + subtitle)}
       onSuggestion={(suggestion) => handlePromptChange(field, suggestion)}
       isOptional={isOptional}
+      apiKey={apiKey}
     >
       {children}
     </PromptCard>
@@ -323,6 +329,23 @@ const App: React.FC = () => {
 
           {/* Right Column: Output & Actions */}
           <div className="sticky top-28 self-start space-y-6">
+            <Card>
+                <h3 className="font-heading text-xl font-bold text-gray-800 mb-4">Configuración</h3>
+                <div className="space-y-2">
+                    <label htmlFor="apiKey" className="block font-medium text-gray-700 text-sm">Tu API Key de Gemini</label>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="password"
+                            id="apiKey"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primary focus:border-transparent text-sm"
+                            placeholder="Pega tu API Key aquí"
+                        />
+                    </div>
+                </div>
+            </Card>
+
             <Card>
               <h3 className="font-heading text-xl font-bold text-gray-800 mb-4">Acciones</h3>
               <div className="space-y-4">
