@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { useLocalStorage, useAutoSave } from './hooks/useLocalStorage';
 import { PromptData, GeneratedEmail, Feedback, ServiceReference } from './types';
 import { COPYWRITING_FORMULAS, SUBJECT_OPTIONS, EXAMPLE_PROMPT_DATA } from './constants';
 import { generateEmailCopy } from './services/geminiService';
@@ -35,16 +36,20 @@ const initialPromptData: PromptData = {
 };
 
 const App: React.FC = () => {
-  const [promptData, setPromptData] = useState<PromptData>(initialPromptData);
-  const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({});
-  const [emailCount, setEmailCount] = useState(1);
-  const [isEmailCountLocked, setIsEmailCountLocked] = useState(false);
+  const [promptData, setPromptData] = useLocalStorage<PromptData>('ai-email-copywriter-prompt-data', initialPromptData);
+  const [lockedFields, setLockedFields] = useLocalStorage<Record<string, boolean>>('ai-email-copywriter-locked-fields', {});
+  const [emailCount, setEmailCount] = useLocalStorage<number>('ai-email-copywriter-email-count', 1);
+  const [isEmailCountLocked, setIsEmailCountLocked] = useLocalStorage<boolean>('ai-email-copywriter-email-count-locked', false);
   const [generatedEmails, setGeneratedEmails] = useState<GeneratedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [feedbackHistory, setFeedbackHistory] = useState<Feedback[]>([]);
+  const [feedbackHistory, setFeedbackHistory] = useLocalStorage<Feedback[]>('ai-email-copywriter-feedback-history', []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-save prompt data with debounce
+  useAutoSave('ai-email-copywriter-prompt-data', promptData, 500);
+  useAutoSave('ai-email-copywriter-locked-fields', lockedFields, 500);
+  useAutoSave('ai-email-copywriter-feedback-history', feedbackHistory, 1000);
 
   const handlePromptChange = useCallback((field: keyof PromptData, value: any) => {
     setPromptData(prev => ({ ...prev, [field]: value }));
@@ -138,6 +143,23 @@ const App: React.FC = () => {
         handleGenerate();
     }, 100);
   };
+
+  const clearAllData = () => {
+    if (window.confirm('¿Estás seguro de que quieres borrar todos los datos guardados? Esta acción no se puede deshacer.')) {
+      localStorage.removeItem('ai-email-copywriter-prompt-data');
+      localStorage.removeItem('ai-email-copywriter-locked-fields');
+      localStorage.removeItem('ai-email-copywriter-email-count');
+      localStorage.removeItem('ai-email-copywriter-email-count-locked');
+      localStorage.removeItem('ai-email-copywriter-feedback-history');
+      
+      setPromptData(initialPromptData);
+      setLockedFields({});
+      setEmailCount(1);
+      setIsEmailCountLocked(false);
+      setFeedbackHistory([]);
+      setGeneratedEmails([]);
+    }
+  };
   
   const getSuggestionPrompt = (fieldTitle: string): string => {
     const contextParts: string[] = [];
@@ -175,7 +197,13 @@ const App: React.FC = () => {
       <header className="bg-brand-card/80 backdrop-blur-sm shadow-sm sticky top-0 z-20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-5 text-center">
           <h1 className="text-4xl font-extrabold text-brand-text font-heading">AI Email Copywriter</h1>
-          <p className="text-gray-500 mt-1">Crea newsletters con un IA auto-entrenado y un panel de control creativo.</p>
+          <div className="flex items-center justify-center gap-4 mt-2">
+            <p className="text-gray-500">Crea newsletters con un IA auto-entrenado y un panel de control creativo.</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+              <Icon name="save" className="w-3 h-3" />
+              <span>Autoguardado activo</span>
+            </div>
+          </div>
         </div>
       </header>
       
@@ -298,6 +326,21 @@ const App: React.FC = () => {
             <Card>
               <h3 className="font-heading text-xl font-bold text-gray-800 mb-4">Acciones</h3>
               <div className="space-y-4">
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-green-700 mb-1">
+                      <Icon name="save" className="w-4 h-4" />
+                      <span className="font-medium">Tu trabajo se guarda automáticamente</span>
+                    </div>
+                    <p className="text-xs text-green-600">
+                      Todos tus campos, configuraciones y feedback se guardan en tu navegador.
+                    </p>
+                    <button 
+                      onClick={clearAllData}
+                      className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
+                    >
+                      Borrar todos los datos guardados
+                    </button>
+                  </div>
                   <div className="flex items-center justify-between">
                       <label htmlFor="emailCount" className="block font-medium text-gray-700">Número de emails a generar</label>
                       <div className="flex items-center gap-2" title="Bloquear este campo para que no cambie al generar ejemplos">
